@@ -1,11 +1,17 @@
-from fastapi import FastAPI 
+from fastapi import FastAPI
 
 app = FastAPI(
-    title = "Smart_inventory_Saas"
+    title="Smart Inventory SaaS"
 )
 
 @app.get("/")
 def home():
     return {
-"message":"Smart_inventory_Saas Running"
-}
+        "message": "Smart Inventory SaaS Running"
+    }
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok"
+    }
