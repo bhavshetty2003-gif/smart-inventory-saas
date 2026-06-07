@@ -8,3 +8,4 @@ class Invoice(Base):
     product_id = Column(Integer)
     quantity = Column(Integer)
     total_amount = Column(Float)
+    owner_id = Column(Integer)

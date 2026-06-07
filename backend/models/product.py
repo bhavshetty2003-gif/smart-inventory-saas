@@ -8,3 +8,4 @@ class Product(Base):
     name = Column(String)
     price = Column(Float)
     quantity = Column(Integer)
+    owner_id = Column(Integer)

@@ -8,3 +8,4 @@ class Business(Base):
     name = Column(String)
     owner = Column(String)
     email = Column(String)
+    owner_id = Column(Integer)

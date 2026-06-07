@@ -13,10 +13,12 @@ from backend.security import hash_password
 from backend.security import verify_password
 from backend.auth import create_access_token
 from backend.dependencies import get_current_user
+from backend.database.db import Base, engine
 
 app = FastAPI(
     title="Smart Inventory SaaS"
 )
+Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 def home():
@@ -25,14 +27,15 @@ def home():
     }
 
 @app.post("/businesses")
-def create_business(business:BusinessCreate):
+def create_business(business:BusinessCreate,user=Depends(get_current_user)):
 
     db= SessionLocal()
 
     new_business = Business(
         name=business.name,
         owner=business.owner,
-        email=business.email
+        email=business.email,
+        owner_id=user["id"]
     )
 
     db.add(new_business)
@@ -42,21 +45,26 @@ def create_business(business:BusinessCreate):
         "message": "Business saved successfully"
     }
 @app.get("/businesses")
-def get_businesses():
-
+def get_businesses(user=Depends(get_current_user)):
     db = SessionLocal()
 
-    businesses = db.query(Business).all()
+    businesses = db.query(Business).filter(
+        Business.owner_id == user["id"]
+    ).all()
 
     return businesses
+
 @app.delete("/businesses/{business_id}")
-def delete_business(business_id: int):
+def delete_business(
+    business_id: int,
+    user=Depends(get_current_user)
+):
 
     db = SessionLocal()
 
     business = db.query(Business).filter(
-        Business.id == business_id
-    ).first()
+    Business.id == business_id,
+    Business.owner_id == user["id"]).first()
 
     if not business:
         return {
@@ -70,13 +78,14 @@ def delete_business(business_id: int):
         "message": "Business deleted successfully"
     }
 @app.post("/products")
-def create_product(product: ProductCreate):
+def create_product(product: ProductCreate,user=Depends(get_current_user)):
 
     db = SessionLocal()
 
     new_product = Product(
         name=product.name,
         price=product.price,
+        owner_id=user["id"],
         quantity=product.quantity
     )
 
@@ -87,11 +96,12 @@ def create_product(product: ProductCreate):
         "message": "Product saved successfully"
     }
 @app.get("/products")
-def get_products():
-
+def get_products(user=Depends(get_current_user)):
     db = SessionLocal()
 
-    products = db.query(Product).all()
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
 
     return products
 @app.put("/products/{product_id}")
@@ -121,7 +131,7 @@ def update_product(
         "message": "Product updated successfully"
     }
 @app.post("/invoices")
-def create_invoice(invoice: InvoiceCreate):
+def create_invoice(invoice: InvoiceCreate,user=Depends(get_current_user)):
 
     db = SessionLocal()
 
@@ -142,32 +152,43 @@ def create_invoice(invoice: InvoiceCreate):
     new_invoice = Invoice(
         product_id=invoice.product_id,
         quantity=invoice.quantity,
-        total_amount=total_amount
+        total_amount=total_amount,
+        owner_id=user["id"]
     )
 
     db.add(new_invoice)
     db.commit()
-
     return {
-        "message": "Invoice created",
-        "total_amount": total_amount
+        "message": "Invoice saved successfully"
     }
+
 @app.get("/invoices")
-def get_invoices():
+def get_invoices(user=Depends(get_current_user)):
 
     db = SessionLocal()
 
-    invoices = db.query(Invoice).all()
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
 
     return invoices
+
 @app.get("/dashboard")
-def dashboard():
+def dashboard(user=Depends(get_current_user)):
 
     db = SessionLocal()
 
-    total_products = db.query(Product).count()
+    total_products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).count()
 
-    total_invoices = db.query(Invoice).count()
+    total_invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).count()
+
+    total_businesses = db.query(Business).filter(
+        Business.owner_id == user["id"]
+    ).count()
 
     total_revenue = sum(
         invoice.total_amount
@@ -177,7 +198,8 @@ def dashboard():
     return {
         "total_products": total_products,
         "total_invoices": total_invoices,
-        "total_revenue": total_revenue
+        "total_revenue": total_revenue,
+        "businesses": total_businesses,
     }
 @app.post("/register")
 def register(user: UserCreate):
