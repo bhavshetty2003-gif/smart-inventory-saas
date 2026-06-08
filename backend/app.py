@@ -59,24 +59,20 @@ def delete_business(
     business_id: int,
     user=Depends(get_current_user)
 ):
-
     db = SessionLocal()
 
     business = db.query(Business).filter(
-    Business.id == business_id,
-    Business.owner_id == user["id"]).first()
+        Business.id == business_id,
+        Business.owner_id == user["id"]
+    ).first()
 
     if not business:
-        return {
-            "message": "Business not found"
-        }
+        return {"message": "Business not found"}
 
     db.delete(business)
     db.commit()
 
-    return {
-        "message": "Business deleted successfully"
-    }
+    return {"message": "Business deleted successfully"}
 @app.post("/products")
 def create_product(product: ProductCreate,user=Depends(get_current_user)):
 
@@ -107,19 +103,18 @@ def get_products(user=Depends(get_current_user)):
 @app.put("/products/{product_id}")
 def update_product(
     product_id: int,
-    product: ProductCreate
+    product: ProductCreate,
+    user=Depends(get_current_user)
 ):
-
     db = SessionLocal()
 
     existing_product = db.query(Product).filter(
-        Product.id == product_id
+        Product.id == product_id,
+        Product.owner_id == user["id"]
     ).first()
 
     if not existing_product:
-        return {
-            "message": "Product not found"
-        }
+        return {"message": "Product not found"}
 
     existing_product.name = product.name
     existing_product.price = product.price
@@ -127,9 +122,7 @@ def update_product(
 
     db.commit()
 
-    return {
-        "message": "Product updated successfully"
-    }
+    return {"message": "Product updated successfully"}
 @app.post("/invoices")
 def create_invoice(invoice: InvoiceCreate,user=Depends(get_current_user)):
 
@@ -256,3 +249,207 @@ def login(login_data: LoginRequest):
 def get_me(user=Depends(get_current_user)):
     return user
 
+@app.delete("/products/{product_id}")
+def delete_product(
+    product_id: int,
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    product = db.query(Product).filter(
+        Product.id == product_id,
+        Product.owner_id == user["id"]
+    ).first()
+
+    if not product:
+        return {"message": "Product not found"}
+
+    db.delete(product)
+    db.commit()
+
+    return {"message": "Product deleted"}
+@app.put("/businesses/{business_id}")
+def update_business(
+    business_id: int,
+    business: BusinessCreate,
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    existing_business = db.query(Business).filter(
+        Business.id == business_id,
+        Business.owner_id == user["id"]
+    ).first()
+
+    if not existing_business:
+        return {"message": "Business not found"}
+
+    existing_business.name = business.name
+    existing_business.owner = business.owner
+    existing_business.email = business.email
+
+    db.commit()
+
+    return {"message": "Business updated successfully"}
+@app.put("/invoices/{invoice_id}")
+def update_invoice(
+    invoice_id: int,
+    invoice: InvoiceCreate,
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    existing_invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.owner_id == user["id"]
+    ).first()
+
+    if not existing_invoice:
+        return {"message": "Invoice not found"}
+
+    existing_invoice.product_id = invoice.product_id
+    existing_invoice.quantity = invoice.quantity
+
+    db.commit()
+
+    return {"message": "Invoice updated successfully"}
+
+@app.delete("/invoices/{invoice_id}")
+def delete_invoice(
+    invoice_id: int,
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.owner_id == user["id"]
+    ).first()
+
+    if not invoice:
+        return {"message": "Invoice not found"}
+
+    db.delete(invoice)
+    db.commit()
+
+    return {"message": "Invoice deleted successfully"}
+
+@app.get("/dashboard/revenue")
+def revenue_dashboard(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_revenue = sum(invoice.total_amount for invoice in invoices)
+
+    for invoice in invoices:
+        total_revenue += invoice.total_amount
+
+    return {
+        "total_revenue": total_revenue,
+        "total_invoices": len(invoices)
+    }
+@app.get("/dashboard/low-stock")
+def low_stock_dashboard(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"],
+        Product.quantity < 5
+    ).all()
+
+    return {
+        "low_stock_products": products,
+        "count": len(products)
+    }
+@app.get("/dashboard/summary")
+def dashboard_summary(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    businesses = db.query(Business).filter(
+        Business.owner_id == user["id"]
+    ).all()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_revenue = sum(
+        invoice.total_amount for invoice in invoices
+    )
+
+    low_stock_count = len([
+        product for product in products
+        if product.quantity < 5
+    ])
+
+    return {
+        "total_products": len(products),
+        "total_businesses": len(businesses),
+        "total_invoices": len(invoices),
+        "total_revenue": total_revenue,
+        "low_stock_count": low_stock_count
+    }
+@app.get("/ai/recommendations")
+def ai_recommendations(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    recommendations = []
+
+    for product in products:
+        if product.quantity < 5:
+            recommendations.append({
+                "product": product.name,
+                "current_stock": product.quantity,
+                "recommendation": f"Reorder {20 - product.quantity} units"
+            })
+
+    return {
+        "recommendations": recommendations
+    }
+@app.get("/ai/average-sales")
+def average_sales(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_quantity = sum(
+        invoice.quantity for invoice in invoices
+    )
+
+    days = 30
+
+    return {
+        "average_daily_sales":
+        round(total_quantity / days, 2)
+    }
+@app.get("/ai/stockout-prediction")
+def stockout_prediction(
+    user=Depends(get_current_user)
+):
+@app.get("/ai/insights")
+def ai_insights(
+    user=Depends(get_current_user)
+):
