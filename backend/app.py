@@ -14,6 +14,7 @@ from backend.security import verify_password
 from backend.auth import create_access_token
 from backend.dependencies import get_current_user
 from backend.database.db import Base, engine
+from datetime import datetime
 
 app = FastAPI(
     title="Smart Inventory SaaS"
@@ -146,7 +147,8 @@ def create_invoice(invoice: InvoiceCreate,user=Depends(get_current_user)):
         product_id=invoice.product_id,
         quantity=invoice.quantity,
         total_amount=total_amount,
-        owner_id=user["id"]
+        owner_id=user["id"],
+        invoice_date=datetime.utcnow()
     )
 
     db.add(new_invoice)
@@ -445,11 +447,71 @@ def average_sales(
         "average_daily_sales":
         round(total_quantity / days, 2)
     }
+
 @app.get("/ai/stockout-prediction")
 def stockout_prediction(
     user=Depends(get_current_user)
 ):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_quantity = sum(
+        invoice.quantity for invoice in invoices
+    )
+
+    average_daily_sales = total_quantity / 30
+
+    predictions = []
+
+    for product in products:
+
+        if average_daily_sales > 0:
+            days_until_stockout = round(
+                product.quantity / average_daily_sales,
+                2
+            )
+        else:
+            days_until_stockout = "No sales data"
+
+        predictions.append({
+            "product": product.name,
+            "current_stock": product.quantity,
+            "days_until_stockout": days_until_stockout
+        })
+
+    return {
+        "predictions": predictions
+    }
+
 @app.get("/ai/insights")
 def ai_insights(
     user=Depends(get_current_user)
 ):
+    return {
+        "message": "AI insights coming soon"
+    }
+@app.get("/ai/average-sales")
+def average_sales(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_quantity = sum(
+        invoice.quantity for invoice in invoices
+    )
+
+    return {
+        "average_daily_sales":
+        round(total_quantity / 30, 2)
+    }
