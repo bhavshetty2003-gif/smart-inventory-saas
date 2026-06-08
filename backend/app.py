@@ -448,6 +448,32 @@ def average_sales(
         round(total_quantity / days, 2)
     }
 
+
+@app.get("/ai/insights")
+def ai_insights(
+    user=Depends(get_current_user)
+):
+    return {
+        "message": "AI insights coming soon"
+    }
+@app.get("/ai/average-sales")
+def average_sales(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_quantity = sum(
+        invoice.quantity for invoice in invoices
+    )
+
+    return {
+        "average_daily_sales":
+        round(total_quantity / 30, 2)
+    }
 @app.get("/ai/stockout-prediction")
 def stockout_prediction(
     user=Depends(get_current_user)
@@ -489,29 +515,30 @@ def stockout_prediction(
     return {
         "predictions": predictions
     }
-
-@app.get("/ai/insights")
-def ai_insights(
-    user=Depends(get_current_user)
-):
-    return {
-        "message": "AI insights coming soon"
-    }
-@app.get("/ai/average-sales")
-def average_sales(
+@app.get("/ai/reorder")
+def reorder_recommendation(
     user=Depends(get_current_user)
 ):
     db = SessionLocal()
 
-    invoices = db.query(Invoice).filter(
-        Invoice.owner_id == user["id"]
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
     ).all()
 
-    total_quantity = sum(
-        invoice.quantity for invoice in invoices
-    )
+    recommendations = []
+
+    for product in products:
+
+        if product.quantity < 10:
+
+            reorder_qty = 50 - product.quantity
+
+            recommendations.append({
+                "product": product.name,
+                "current_stock": product.quantity,
+                "recommended_reorder": reorder_qty
+            })
 
     return {
-        "average_daily_sales":
-        round(total_quantity / 30, 2)
+        "recommendations": recommendations
     }
