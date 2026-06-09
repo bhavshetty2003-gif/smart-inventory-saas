@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from backend.schemas.business import BusinessCreate
 from backend.database.db import SessionLocal
 from backend.models.business import Business
@@ -98,6 +99,7 @@ def create_product(product: ProductCreate,user=Depends(get_current_user)):
         name=product.name,
         price=product.price,
         owner_id=user["id"],
+        business_id=product.business_id,
         quantity=product.quantity
     )
 
@@ -236,20 +238,22 @@ def register(user: UserCreate):
     return {
         "message": "User registered successfully"
     }
-@app.post("/login")
-def login(login_data: LoginRequest):
 
+@app.post("/login")
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends()
+):
     db = SessionLocal()
 
     user = db.query(User).filter(
-        User.email == login_data.email
+        User.email == form_data.username
     ).first()
 
     if not user:
         return {"message": "User not found"}
 
     if not verify_password(
-        login_data.password,
+        form_data.password,
         user.password
     ):
         return {"message": "Invalid password"}
@@ -259,7 +263,8 @@ def login(login_data: LoginRequest):
     )
 
     return {
-        "access_token": token
+        "access_token": token,
+        "token_type": "bearer"
     }
 
 @app.get("/me")
@@ -675,3 +680,185 @@ def product_sales(
             ] += invoice.total_amount
 
     return list(sales_data.values())
+
+@app.get("/analytics/revenue-by-day")
+def revenue_by_day(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    revenue_data = defaultdict(float)
+
+    for invoice in invoices:
+
+        if invoice.invoice_date:
+
+            day = invoice.invoice_date.date()
+
+            revenue_data[day] += invoice.total_amount
+
+    result = []
+
+    for day, revenue in revenue_data.items():
+        result.append({
+            "date": str(day),
+            "revenue": revenue
+        })
+
+    return sorted(
+        result,
+        key=lambda x: x["date"]
+    )
+
+@app.get("/analytics/top-products")
+def top_products(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    sales = {}
+
+    for product in products:
+        sales[product.id] = {
+            "product_name": product.name,
+            "units_sold": 0,
+            "revenue": 0
+        }
+
+    for invoice in invoices:
+
+        if invoice.product_id in sales:
+
+            sales[invoice.product_id]["units_sold"] += (
+                invoice.quantity
+            )
+
+            sales[invoice.product_id]["revenue"] += (
+                invoice.total_amount
+            )
+
+    result = list(sales.values())
+
+    result.sort(
+        key=lambda x: x["units_sold"],
+        reverse=True
+    )
+
+    return result
+@app.get("/dashboard")
+def dashboard(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    return {
+        "total_products": len(products),
+        "low_stock": len([
+            p for p in products
+            if p.quantity < 10
+        ]),
+        "total_invoices": len(invoices),
+        "total_revenue": sum(
+            i.total_amount for i in invoices
+        )
+    }
+@app.get("/analytics/monthly-revenue")
+def monthly_revenue(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    revenue = defaultdict(float)
+
+    for invoice in invoices:
+
+        if invoice.invoice_date:
+
+            month = invoice.invoice_date.strftime(
+                "%Y-%m"
+            )
+
+            revenue[month] += invoice.total_amount
+
+    return revenue
+@app.get("/ai/forecast")
+def forecast(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_sales = sum(
+        i.quantity for i in invoices
+    )
+
+    average_daily_sales = total_sales / 30
+
+    return {
+        "average_daily_sales":
+            round(average_daily_sales, 2)
+    }
+@app.get("/analytics/business-performance")
+def business_performance(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    businesses = db.query(Business).filter(
+        Business.owner_id == user["id"]
+    ).all()
+
+    result = []
+
+    for business in businesses:
+
+        products = db.query(Product).filter(
+            Product.business_id == business.id
+        ).all()
+
+        revenue = 0
+
+        for product in products:
+
+            invoices = db.query(Invoice).filter(
+                Invoice.product_id == product.id
+            ).all()
+
+            for invoice in invoices:
+                revenue += invoice.total_amount
+
+        result.append({
+            "business_id": business.id,
+            "business_name": business.name,
+            "total_products": len(products),
+            "total_revenue": revenue
+        })
+
+    return result

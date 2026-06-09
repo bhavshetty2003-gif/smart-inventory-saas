@@ -9,3 +9,4 @@ class Product(Base):
     price = Column(Float)
     quantity = Column(Integer)
     owner_id = Column(Integer)
+    business_id = Column(Integer)
