@@ -15,10 +15,25 @@ from backend.auth import create_access_token
 from backend.dependencies import get_current_user
 from backend.database.db import Base, engine
 from datetime import datetime
+from groq import Groq
+from dotenv import load_dotenv
+import os
+
 
 app = FastAPI(
     title="Smart Inventory SaaS"
 )
+
+from groq import Groq
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+client = Groq(api_key=GROQ_API_KEY)
+
 Base.metadata.create_all(bind=engine)
 
 @app.get("/")
@@ -453,8 +468,53 @@ def average_sales(
 def ai_insights(
     user=Depends(get_current_user)
 ):
+    db = SessionLocal()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    total_products = len(products)
+
+    low_stock = len([
+        p for p in products
+        if p.quantity < 10
+    ])
+
+    revenue = sum(
+        invoice.total_amount
+        for invoice in invoices
+    )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""
+                Analyze this inventory:
+
+                Total Products: {total_products}
+                Low Stock Products: {low_stock}
+                Total Revenue: {revenue}
+
+                Give inventory recommendations.
+                """
+            }
+        ]
+    )
+
+    insight = response.choices[0].message.content
+
     return {
-        "message": "AI insights coming soon"
+        "total_products": total_products,
+        "low_stock_products": low_stock,
+        "total_revenue": revenue,
+        "insight": insight
     }
 @app.get("/ai/average-sales")
 def average_sales(
@@ -541,4 +601,20 @@ def reorder_recommendation(
 
     return {
         "recommendations": recommendations
+    }
+@app.get("/test-groq")
+def test_groq():
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "user",
+                "content": "Say hello"
+            }
+        ]
+    )
+
+    return {
+        "message": response.choices[0].message.content
     }
