@@ -18,7 +18,7 @@ from datetime import datetime
 from groq import Groq
 from dotenv import load_dotenv
 import os
-
+from collections import defaultdict
 
 app = FastAPI(
     title="Smart Inventory SaaS"
@@ -618,3 +618,60 @@ def test_groq():
     return {
         "message": response.choices[0].message.content
     }
+@app.get("/analytics/sales-trend")
+def sales_trend(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    result = []
+
+    for invoice in invoices:
+        result.append({
+            "invoice_id": invoice.id,
+            "date": invoice.invoice_date,
+            "quantity": invoice.quantity,
+            "revenue": invoice.total_amount
+        })
+
+    return result
+@app.get("/analytics/product-sales")
+def product_sales(
+    user=Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    invoices = db.query(Invoice).filter(
+        Invoice.owner_id == user["id"]
+    ).all()
+
+    products = db.query(Product).filter(
+        Product.owner_id == user["id"]
+    ).all()
+
+    sales_data = {}
+
+    for product in products:
+        sales_data[product.id] = {
+            "product_name": product.name,
+            "units_sold": 0,
+            "revenue": 0
+        }
+
+    for invoice in invoices:
+
+        if invoice.product_id in sales_data:
+
+            sales_data[invoice.product_id][
+                "units_sold"
+            ] += invoice.quantity
+
+            sales_data[invoice.product_id][
+                "revenue"
+            ] += invoice.total_amount
+
+    return list(sales_data.values())
